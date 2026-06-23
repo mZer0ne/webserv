@@ -1,0 +1,29 @@
+# Node
+node_modules/
+package-lock.json
+yarn.lock
+
+# Electron / React build
+/dist
+/build
+/out
+/release
+
+# IntelliJ IDEA / WebStorm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Логи и отладка
+*.log
+.eslintcache
+
+# Системные
+.DS_Store
+Thumbs.db
+
+# Секреты
+.env
+.env.*
+!.env.example

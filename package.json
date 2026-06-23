@@ -1,0 +1,54 @@
+{
+  "name": "webserv",
+  "version": "0.1.0",
+  "description": "Modern cross-platform desktop application for local web development",
+  "main": "dist/main/index.js",
+  "author": "mZer0ne",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsc -p src/main/tsconfig.json && tsc -p src/preload/tsconfig.json && vite",
+    "build": "tsc -p src/main/tsconfig.json && tsc -p src/preload/tsconfig.json && vite build",
+    "electron:dev": "electron .",
+    "electron:win": "npm run build && electron-builder --win --x64",
+    "electron:mac": "npm run build && electron-builder --mac --arm64"
+  },
+  "build": {
+    "appId": "com.mzer0ne.webserv",
+    "productName": "WebServ",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "node_modules/**/*",
+      "package.json",
+      "dist/**/*"
+    ],
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dockerode": "^4.0.2",
+    "electron-log": "^5.1.2",
+    "electron-store": "^8.2.0",
+    "yaml": "^2.4.5"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.29",
+    "@types/node": "^20.14.9",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^41.0",
+    "electron-builder": "^24.13.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.5.2",
+    "vite": "^7.0"
+  }
+}
