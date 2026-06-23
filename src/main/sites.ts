@@ -135,7 +135,11 @@ server {
     ssl_certificate_key ${keyPathFor(site.domain)};
 
     location / {
-        proxy_pass http://${site.target}:${site.targetPort};
+        # Resolve the target lazily via Docker's embedded DNS so nginx still starts
+        # (and other sites keep working) even if this container is down — yields 502, not [emerg].
+        resolver 127.0.0.11 valid=10s ipv6=off;
+        set $webserv_upstream http://${site.target}:${site.targetPort};
+        proxy_pass $webserv_upstream$request_uri;
         # Preserve the original host:port so apps (e.g. Laravel) build correct URLs/redirects.
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
