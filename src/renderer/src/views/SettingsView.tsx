@@ -46,7 +46,6 @@ export default function SettingsView() {
       <h4 style={{ margin: '0 0 16px' }}>General</h4>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         {field('Docker Host / Socket (blank = auto)', s.dockerSocketPath, (v) => setS({ ...s, dockerSocketPath: v }), 'tcp://127.0.0.1:2375 or //./pipe/docker_engine')}
-        {field('Local TLD Suffix', s.tldSuffix, (v) => setS({ ...s, tldSuffix: v }))}
         {field('Docker Network', s.networkName, (v) => setS({ ...s, networkName: v }))}
         {field('Sites Root', s.sitesRoot, (v) => setS({ ...s, sitesRoot: v }))}
         {field('Workspace Directory (compose projects)', s.workspaceDir, (v) => setS({ ...s, workspaceDir: v }))}
@@ -60,19 +59,6 @@ export default function SettingsView() {
         {portField('Sites — HTTP', s.web.httpPort, (v) => setS({ ...s, web: { ...s.web, httpPort: v } }), 9080)}
         {portField('Sites — HTTPS', s.web.httpsPort, (v) => setS({ ...s, web: { ...s.web, httpsPort: v } }), 9443)}
         {portField('Ollama (AI)', s.ai.port, (v) => setS({ ...s, ai: { ...s.ai, port: v } }), 11434)}
-        {portField('NPM — Admin UI', s.npm.adminPort, (v) => setS({ ...s, npm: { ...s.npm, adminPort: v } }), 9081)}
-        {portField('NPM — HTTP', s.npm.httpPort, (v) => setS({ ...s, npm: { ...s.npm, httpPort: v } }), 9082)}
-        {portField('NPM — HTTPS', s.npm.httpsPort, (v) => setS({ ...s, npm: { ...s.npm, httpsPort: v } }), 9444)}
-      </div>
-
-      <h4 style={{ margin: '28px 0 16px' }}>Nginx Proxy Manager</h4>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        {field('Admin Email', s.npm.adminEmail, (v) => setS({ ...s, npm: { ...s.npm, adminEmail: v } }))}
-        {field('Admin Password', s.npm.adminPassword, (v) => setS({ ...s, npm: { ...s.npm, adminPassword: v } }))}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.9rem' }}>
-          <input type="checkbox" checked={s.npm.enabled} onChange={(e) => setS({ ...s, npm: { ...s.npm, enabled: e.target.checked } })} />
-          Auto-register domains in NPM on project start
-        </label>
       </div>
 
       <div style={{ marginTop: 28, display: 'flex', gap: 12, alignItems: 'center' }}>

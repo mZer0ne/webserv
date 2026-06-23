@@ -6,11 +6,10 @@ import RuntimesView from './views/RuntimesView';
 import SitesView from './views/SitesView';
 import AiView from './views/AiView';
 import ContainersView from './views/ContainersView';
-import ProxyView from './views/ProxyView';
 import DatabaseView from './views/DatabaseView';
 import SettingsView from './views/SettingsView';
 
-type Tab = 'dashboard' | 'sites' | 'runtimes' | 'projects' | 'containers' | 'proxy' | 'database' | 'ai' | 'settings';
+type Tab = 'dashboard' | 'sites' | 'runtimes' | 'projects' | 'containers' | 'database' | 'ai' | 'settings';
 
 const NAV: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: '📊 Dashboard' },
@@ -18,7 +17,6 @@ const NAV: { id: Tab; label: string }[] = [
   { id: 'runtimes', label: '🧩 Services' },
   // { id: 'projects', label: '📁 Projects' },
   // { id: 'containers', label: '📦 Containers' },
-  // { id: 'proxy', label: '🌐 Proxy Manager' },
   // { id: 'database', label: '🗄️ Databases' },
   { id: 'ai', label: '🤖 AI / LLM' },
   { id: 'settings', label: '⚙️ Settings' },
@@ -28,7 +26,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [projects, setProjects] = useState<Project[]>([]);
   const [dockerActive, setDockerActive] = useState(false);
-  const [proxyActive, setProxyActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ version: 'Unknown', containers: 0, containersRunning: 0, images: 0, memory: 'N/A' });
 
@@ -45,8 +42,6 @@ export default function App() {
           memory: status.memory || 'N/A',
         });
         setProjects(await window.api.projects.list());
-        const ps = await window.api.proxy.status();
-        setProxyActive(ps.ready);
       } else {
         setProjects([]);
       }
@@ -95,23 +90,26 @@ export default function App() {
               <span className={`dot ${dockerActive ? 'active' : ''}`} />
               Docker: {dockerActive ? 'Connected' : 'Disconnected'}
             </div>
-            <div className="status-badge" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('proxy')}>
-              <span className={`dot ${proxyActive ? 'active' : ''}`} />
-              NPM Proxy: {proxyActive ? 'Active' : 'Offline'}
-            </div>
           </div>
         </header>
 
         <div className="content-scrollable">
           {loading ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>Loading Docker environment…</div>
-          ) : !dockerActive ? (
+          ) : !dockerActive && activeTab !== 'settings' ? (
             <div style={{ padding: 40, textAlign: 'center', backgroundColor: 'var(--bg-glass)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)' }}>
               <div style={{ fontSize: '2.5rem', marginBottom: 16 }}>🔌</div>
               <h3>Docker daemon is offline or inaccessible</h3>
-              <p style={{ color: 'var(--text-secondary)', marginTop: 8, maxWidth: 500, marginLeft: 'auto', marginRight: 'auto' }}>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 8, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
                 Make sure Docker Desktop or the Docker daemon is running. We look for the socket at
                 <code> /var/run/docker.sock</code> and <code>~/.docker/run/docker.sock</code>.
+                {' '}You can adjust the Docker host in <a className="domain-link" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('settings')}>Settings</a>.
+              </p>
+              <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: '0.85rem' }}>
+                Don't have Docker?{' '}
+                <a className="domain-link" href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noreferrer">
+                  Install Docker Desktop ↗
+                </a>
               </p>
             </div>
           ) : (
@@ -121,7 +119,6 @@ export default function App() {
               {activeTab === 'runtimes' && <RuntimesView />}
               {activeTab === 'projects' && <ProjectsView onCreated={fetchData} />}
               {activeTab === 'containers' && <ContainersView projects={projects} />}
-              {activeTab === 'proxy' && <ProxyView />}
               {activeTab === 'database' && <DatabaseView />}
               {activeTab === 'ai' && <AiView />}
               {activeTab === 'settings' && <SettingsView />}

@@ -9,14 +9,6 @@ import {
   getProjectLogs,
 } from './projects.js';
 import {
-  getProxyStatus,
-  bootstrapNpm,
-  listProxyHosts,
-  upsertProxyHost,
-  setProxyHostEnabled,
-  deleteProxyHost,
-} from './proxy.js';
-import {
   listDatabaseContainers,
   listDatabases,
   listTables,
@@ -25,8 +17,10 @@ import {
 import { TEMPLATES, createProject, deleteProject } from './scaffold.js';
 import { getSystemMetrics } from './system.js';
 import { listServices, controlService, serviceLogs } from './services.js';
-import { listRuntimes, installRuntime, uninstallRuntime, listDbFamilies, installFamily } from './runtimes.js';
-import { listSites, addSite, removeSite, getWebStatus, ensureWeb } from './sites.js';
+import { listRuntimes, installRuntime, uninstallRuntime, listDbFamilies, installFamily, saveServiceConfig, readPhpIni, writePhpIni } from './runtimes.js';
+import { getServiceConfig } from './serviceConfig.js';
+import { caStatus, installCA, caCertPath } from './tls.js';
+import { listSites, addSite, updateSite, removeSite, getWebStatus, ensureWeb, stopWeb, removeWeb, setWebEngine } from './sites.js';
 import { getAiStatus, bootstrapAi, listModels, pullModel, deleteModel, generate } from './ai.js';
 
 let mainWindow: BrowserWindow | null = null;
@@ -67,16 +61,6 @@ function registerHandlers() {
   ipcMain.handle('projects:create', (_e, data: any) => createProject(data));
   ipcMain.handle('projects:delete', (_e, id: string, vols: boolean) => deleteProject(id, vols));
 
-  // --- Proxy (NPM) ---
-  ipcMain.handle('proxy:status', () => getProxyStatus());
-  ipcMain.handle('proxy:bootstrap', () => bootstrapNpm());
-  ipcMain.handle('proxy:list-hosts', () => listProxyHosts());
-  ipcMain.handle('proxy:upsert-host', (_e, input: any) => upsertProxyHost(input));
-  ipcMain.handle('proxy:set-enabled', (_e, id: number, enabled: boolean) =>
-    setProxyHostEnabled(id, enabled)
-  );
-  ipcMain.handle('proxy:delete-host', (_e, id: number) => deleteProxyHost(id));
-
   // --- Databases ---
   ipcMain.handle('db:list-containers', () => listDatabaseContainers());
   ipcMain.handle('db:list-databases', (_e, id: string) => listDatabases(id));
@@ -101,13 +85,26 @@ function registerHandlers() {
   ipcMain.handle('runtimes:install-family', (_e, familyId: string, version: string) =>
     installFamily(familyId, version)
   );
+  ipcMain.handle('runtimes:get-config', (_e, key: string) => getServiceConfig(key));
+  ipcMain.handle('runtimes:save-config', (_e, key: string, cfg: any) => saveServiceConfig(key, cfg));
+  ipcMain.handle('runtimes:read-php-ini', (_e, id: string) => readPhpIni(id));
+  ipcMain.handle('runtimes:write-php-ini', (_e, id: string, content: string) => writePhpIni(id, content));
 
   // --- Sites (shared MAMP-style nginx) ---
   ipcMain.handle('sites:list', () => listSites());
   ipcMain.handle('sites:add', (_e, input: any) => addSite(input));
+  ipcMain.handle('sites:update', (_e, id: string, input: any) => updateSite(id, input));
   ipcMain.handle('sites:remove', (_e, id: string) => removeSite(id));
   ipcMain.handle('sites:web-status', () => getWebStatus());
   ipcMain.handle('sites:ensure-web', () => ensureWeb());
+  ipcMain.handle('sites:stop-web', () => stopWeb());
+  ipcMain.handle('sites:remove-web', () => removeWeb());
+  ipcMain.handle('sites:set-engine', (_e, engine: 'nginx' | 'apache') => setWebEngine(engine));
+
+  // --- TLS / local CA ---
+  ipcMain.handle('tls:status', () => caStatus());
+  ipcMain.handle('tls:install-ca', () => installCA());
+  ipcMain.handle('tls:reveal-ca', () => { shell.showItemInFolder(caCertPath()); });
 
   // --- AI / LLM (Ollama) ---
   ipcMain.handle('ai:status', () => getAiStatus());

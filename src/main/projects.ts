@@ -1,12 +1,6 @@
 import type { ContainerInfo } from 'dockerode';
-import { getDocker, connectToNetwork } from './docker.js';
-import { getSettings } from './settings.js';
+import { getDocker } from './docker.js';
 import { syncHosts } from './hosts.js';
-import {
-  getProxyStatus,
-  upsertProxyHost,
-  disableProxyForDomain,
-} from './proxy.js';
 
 export interface ProjectContainer {
   id: string;
@@ -27,15 +21,14 @@ export interface Project {
   containers: ProjectContainer[];
 }
 
-const WEB_PORT_PREFERENCE = [80, 8080, 8000, 3000, 5173, 9000];
-
 function cleanName(c: ContainerInfo): string {
   return c.Names?.[0]?.replace(/^\//, '') || c.Id.substring(0, 12);
 }
 
+const PROJECT_TLD = '.test';
+
 export async function getProjectsList(): Promise<Project[]> {
   const docker = getDocker();
-  const { tldSuffix } = getSettings();
   const containers = await docker.listContainers({ all: true });
   const projectsMap = new Map<string, Project>();
   const standalone: ContainerInfo[] = [];
@@ -52,7 +45,7 @@ export async function getProjectsList(): Promise<Project[]> {
         id: composeProject,
         name: composeProject,
         stack: 'Docker Compose',
-        domain: `${composeProject}${tldSuffix}`,
+        domain: `${composeProject}${PROJECT_TLD}`,
         status: 'stopped',
         services: [],
         containers: [],
@@ -75,7 +68,7 @@ export async function getProjectsList(): Promise<Project[]> {
   const list = Array.from(projectsMap.values());
   for (const project of list) {
     project.stack = detectStack(project);
-    project.domain = `${project.name}${tldSuffix}`;
+    project.domain = `${project.name}${PROJECT_TLD}`;
   }
 
   if (standalone.length > 0) {
@@ -117,24 +110,6 @@ function detectStack(project: Project): string {
   return 'Docker Compose';
 }
 
-/** Pick the container + internal port that should receive proxied traffic. */
-function pickWebTarget(project: Project): { host: string; port: number } | null {
-  let best: { host: string; port: number; score: number } | null = null;
-  for (const c of project.containers) {
-    for (const p of c.ports || []) {
-      const internal = p.PrivatePort;
-      if (!internal) continue;
-      const score = WEB_PORT_PREFERENCE.includes(internal)
-        ? WEB_PORT_PREFERENCE.length - WEB_PORT_PREFERENCE.indexOf(internal)
-        : 0;
-      if (!best || score > best.score) {
-        best = { host: c.name, port: internal, score };
-      }
-    }
-  }
-  return best ? { host: best.host, port: best.port } : null;
-}
-
 function targetContainerIds(containers: ContainerInfo[], id: string): ContainerInfo[] {
   return containers.filter((c) =>
     id === 'standalone-containers'
@@ -155,26 +130,6 @@ async function refreshHosts(projects: Project[]): Promise<void> {
   await syncHosts(domains);
 }
 
-/** Wire a running project into NPM: attach to network + create/enable proxy host. */
-async function registerProxy(project: Project): Promise<void> {
-  const { networkName, npm } = getSettings();
-  if (!npm.enabled) return;
-  const status = await getProxyStatus();
-  if (!status.ready) return;
-
-  const target = pickWebTarget(project);
-  if (!target) return;
-
-  for (const c of project.containers) {
-    await connectToNetwork(networkName, c.id).catch(() => {});
-  }
-  await upsertProxyHost({
-    domain: project.domain.split(':')[0],
-    forwardHost: target.host,
-    forwardPort: target.port,
-  });
-}
-
 export async function startProject(id: string): Promise<{ success: boolean; error?: string }> {
   try {
     const docker = getDocker();
@@ -182,12 +137,7 @@ export async function startProject(id: string): Promise<{ success: boolean; erro
     for (const c of targetContainerIds(containers, id)) {
       if (c.State !== 'running') await docker.getContainer(c.Id).start();
     }
-    const projects = await getProjectsList();
-    await refreshHosts(projects);
-    const project = projects.find((p) => p.id === id);
-    if (project && id !== 'standalone-containers') {
-      await registerProxy(project).catch((e) => console.error('Proxy register failed:', e));
-    }
+    await refreshHosts(await getProjectsList());
     return { success: true };
   } catch (err: any) {
     console.error(`Failed to start project ${id}:`, err);
@@ -199,15 +149,10 @@ export async function stopProject(id: string): Promise<{ success: boolean; error
   try {
     const docker = getDocker();
     const containers = await docker.listContainers({ all: true });
-    const project = (await getProjectsList()).find((p) => p.id === id);
     for (const c of targetContainerIds(containers, id)) {
       if (c.State === 'running') await docker.getContainer(c.Id).stop();
     }
-    const projects = await getProjectsList();
-    await refreshHosts(projects);
-    if (project && id !== 'standalone-containers') {
-      await disableProxyForDomain(project.domain.split(':')[0]).catch(() => {});
-    }
+    await refreshHosts(await getProjectsList());
     return { success: true };
   } catch (err: any) {
     console.error(`Failed to stop project ${id}:`, err);

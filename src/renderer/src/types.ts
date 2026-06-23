@@ -27,26 +27,6 @@ export interface DockerStatus {
   error?: string;
 }
 
-export interface ProxyStatus {
-  ready: boolean;
-  installed: boolean;
-  running: boolean;
-  containerId?: string;
-  adminUrl?: string;
-  error?: string;
-}
-
-export interface ProxyHost {
-  id: number;
-  domain_names: string[];
-  forward_scheme: string;
-  forward_host: string;
-  forward_port: number;
-  enabled: boolean;
-  ssl_forced: boolean;
-  certificate_id: number;
-}
-
 export interface Template {
   id: string;
   label: string;
@@ -73,20 +53,21 @@ export interface QueryResult {
 
 export interface AppSettings {
   dockerSocketPath: string;
-  tldSuffix: string;
   networkName: string;
   workspaceDir: string;
-  npm: {
+  sitesRoot: string;
+  web: {
+    containerName: string;
+    image: string;
+    engine: 'nginx' | 'apache';
+    httpPort: number;
+    httpsPort: number;
+  };
+  ai: {
     enabled: boolean;
     containerName: string;
     image: string;
-    adminEmail: string;
-    adminPassword: string;
-    adminPort: number;
-    httpPort: number;
-    httpsPort: number;
-    token?: string;
-    tokenExpires?: string;
+    port: number;
   };
 }
 
@@ -108,6 +89,7 @@ export interface ServiceInfo {
   pid: number;
   project: string | null;
   managed: boolean;
+  internalPorts: number[];
 }
 
 export interface RuntimeStatus {
@@ -117,9 +99,11 @@ export interface RuntimeStatus {
   image: string;
   icon: string;
   latest: string;
+  internalPort: number;
   installed: boolean;
   running: boolean;
   containerId?: string;
+  hostPort?: number;
 }
 
 export interface FamilyVersionStatus {
@@ -127,6 +111,7 @@ export interface FamilyVersionStatus {
   installed: boolean;
   running: boolean;
   containerId?: string;
+  hostPort?: number;
 }
 
 export interface DbFamilyStatus {
@@ -134,14 +119,34 @@ export interface DbFamilyStatus {
   label: string;
   icon: string;
   category: string;
+  internalPort: number;
   versions: FamilyVersionStatus[];
+}
+
+export interface ServiceConfig {
+  hostPort?: number;
+  env?: string[];
+}
+
+export type SiteType = 'app' | 'proxy';
+
+export interface SiteInput {
+  domain: string;
+  type?: SiteType;
+  root?: string;
+  php?: string | null;
+  target?: string;
+  targetPort?: number;
 }
 
 export interface Site {
   id: string;
   domain: string;
+  type?: SiteType;
   root: string;
   php: string | null;
+  target?: string;
+  targetPort?: number;
   createdAt: string;
 }
 
@@ -149,7 +154,9 @@ export interface WebStatus {
   installed: boolean;
   running: boolean;
   httpPort: number;
+  httpsPort: number;
   sitesRoot: string;
+  engine: 'nginx' | 'apache';
 }
 
 export interface AiStatus {
@@ -183,14 +190,6 @@ export interface Api {
     checkStatus: () => Promise<DockerStatus>;
     getStats: () => Promise<DockerStatus>;
   };
-  proxy: {
-    status: () => Promise<ProxyStatus>;
-    bootstrap: () => Promise<ProxyStatus>;
-    listHosts: () => Promise<ProxyHost[]>;
-    upsertHost: (input: { domain: string; forwardHost: string; forwardPort: number; forwardScheme?: string }) => Promise<ProxyHost>;
-    setEnabled: (id: number, enabled: boolean) => Promise<void>;
-    deleteHost: (id: number) => Promise<void>;
-  };
   db: {
     listContainers: () => Promise<DbContainer[]>;
     listDatabases: (id: string) => Promise<string[]>;
@@ -211,13 +210,21 @@ export interface Api {
     uninstall: (id: string) => Promise<{ success: boolean; error?: string }>;
     listFamilies: () => Promise<DbFamilyStatus[]>;
     installFamily: (familyId: string, version: string) => Promise<{ success: boolean; error?: string }>;
+    getConfig: (key: string) => Promise<ServiceConfig>;
+    saveConfig: (key: string, cfg: ServiceConfig) => Promise<{ success: boolean; error?: string }>;
+    readPhpIni: (id: string) => Promise<string>;
+    writePhpIni: (id: string, content: string) => Promise<{ success: boolean; error?: string }>;
   };
   sites: {
     list: () => Promise<Site[]>;
-    add: (input: { domain: string; root: string; php: string | null }) => Promise<{ success: boolean; site?: Site; error?: string }>;
+    add: (input: SiteInput) => Promise<{ success: boolean; site?: Site; error?: string }>;
+    update: (id: string, input: SiteInput) => Promise<{ success: boolean; site?: Site; error?: string }>;
     remove: (id: string) => Promise<{ success: boolean; error?: string }>;
     webStatus: () => Promise<WebStatus>;
     ensureWeb: () => Promise<void>;
+    stopWeb: () => Promise<void>;
+    removeWeb: () => Promise<void>;
+    setEngine: (engine: 'nginx' | 'apache') => Promise<{ success: boolean; error?: string }>;
   };
   ai: {
     status: () => Promise<AiStatus>;
@@ -226,6 +233,11 @@ export interface Api {
     pullModel: (name: string) => Promise<{ success: boolean; error?: string }>;
     deleteModel: (name: string) => Promise<{ success: boolean; error?: string }>;
     generate: (model: string, prompt: string) => Promise<{ response?: string; error?: string }>;
+  };
+  tls: {
+    status: () => Promise<{ generated: boolean; trusted: boolean }>;
+    installCa: () => Promise<{ success: boolean; error?: string }>;
+    revealCa: () => Promise<void>;
   };
   dialog: {
     pickFolder: () => Promise<string | null>;
