@@ -1,4 +1,8 @@
-import {getDocker, ensureNetwork, imageExists, pullImage} from './docker.js';
+import { app } from 'electron';
+import { mkdirSync } from 'fs';
+import { join } from 'path';
+import {getDocker, ensureNetwork} from './docker.js';
+import {composeUpService, isWebServComposeContainer} from './compose.js';
 import {getSettings} from './settings.js';
 
 export interface RuntimeDef {
@@ -91,6 +95,31 @@ function familyContainerName(id: string, version: string): string {
     return `webserv-rt-${id}-${version}`;
 }
 
+function composeServiceName(id: string): string {
+    return `rt-${id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+function familyDataMount(familyId: string, version: string): string[] | undefined {
+    const destinations: Record<string, string> = {
+        postgres: '/var/lib/postgresql/data',
+        mariadb: '/var/lib/mysql',
+        mysql: '/var/lib/mysql',
+        redis: '/data',
+    };
+    const destination = destinations[familyId];
+    if (!destination) return undefined;
+
+    const dataDir = join(app.getPath('userData'), 'runtimes', familyId, version);
+    mkdirSync(dataDir, {recursive: true});
+    return [`${dataDir}:${destination}`];
+}
+
+async function removeStandaloneContainer(existing: { Id: string; State?: string }): Promise<void> {
+    const container = getDocker().getContainer(existing.Id);
+    if (existing.State === 'running') await container.stop().catch(() => {});
+    await container.remove({force: true});
+}
+
 export async function listDbFamilies(): Promise<DbFamilyStatus[]> {
     const containers = await getDocker().listContainers({all: true});
     const byName = new Map(containers.map((c) => [c.Names?.[0]?.replace(/^\//, '') || '', c]));
@@ -123,19 +152,21 @@ export async function installFamily(familyId: string, version: string): Promise<
             return {success: true};
         }
         const image = f.image(version);
-        if (!(await imageExists(image))) await pullImage(image);
-        const container = await docker.createContainer({
-            name,
-            Image: image,
-            Env: f.env || [],
-            Labels: {
+        const service: Record<string, unknown> = {
+            container_name: name,
+            image,
+            environment: f.env || [],
+            labels: {
                 'com.webserv.managed': 'true',
                 'com.webserv.runtime': `${familyId}-${version}`,
                 'com.webserv.category': f.category,
             },
-            HostConfig: {RestartPolicy: {Name: 'unless-stopped'}, NetworkMode: networkName},
-        });
-        await container.start();
+            restart: 'unless-stopped',
+            networks: [networkName],
+        };
+        const volumes = familyDataMount(familyId, version);
+        if (volumes) service.volumes = volumes;
+        await composeUpService(composeServiceName(`${familyId}-${version}`), service, networkName);
         return {success: true};
     } catch (err: any) {
         return {success: false, error: err.message};
@@ -181,12 +212,11 @@ export async function installRuntime(id: string): Promise<{ success: boolean; er
 
         const existing = await findContainer(id);
         if (existing) {
-            if (existing.State !== 'running') await docker.getContainer(existing.Id).start();
-            return {success: true};
-        }
-
-        if (!(await imageExists(def.image))) {
-            await pullImage(def.image);
+            if (isWebServComposeContainer(existing)) {
+                if (existing.State !== 'running') await docker.getContainer(existing.Id).start();
+                return {success: true};
+            }
+            await removeStandaloneContainer(existing);
         }
 
         // PHP-FPM runtimes mount the sites root so the shared nginx can serve files
@@ -195,22 +225,20 @@ export async function installRuntime(id: string): Promise<{ success: boolean; er
             ? [`${getSettings().sitesRoot}:/var/www`]
             : undefined;
 
-        const container = await docker.createContainer({
-            name: containerName(id),
-            Image: def.image,
-            Env: def.env || [],
-            Labels: {
+        const service: Record<string, unknown> = {
+            container_name: containerName(id),
+            image: def.image,
+            environment: def.env || [],
+            labels: {
                 'com.webserv.managed': 'true',
                 'com.webserv.runtime': def.id,
                 'com.webserv.category': def.category,
             },
-            HostConfig: {
-                RestartPolicy: {Name: 'unless-stopped'},
-                NetworkMode: networkName,
-                Binds: binds,
-            },
-        });
-        await container.start();
+            restart: 'unless-stopped',
+            networks: [networkName],
+        };
+        if (binds) service.volumes = binds;
+        await composeUpService(composeServiceName(id), service, networkName);
         return {success: true};
     } catch (err: any) {
         return {success: false, error: err.message};

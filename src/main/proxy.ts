@@ -6,9 +6,8 @@ import {
   getDocker,
   ensureNetwork,
   connectToNetwork,
-  imageExists,
-  pullImage,
 } from './docker.js';
+import { composeUpService, isWebServComposeContainer } from './compose.js';
 import { getSettings, updateNpm } from './settings.js';
 
 export interface ProxyHost {
@@ -99,7 +98,8 @@ export async function bootstrapNpm(): Promise<ProxyStatus> {
       const mismatch =
         hp('80/tcp') !== String(npm.httpPort) ||
         hp('443/tcp') !== String(npm.httpsPort) ||
-        hp('81/tcp') !== String(npm.adminPort);
+        hp('81/tcp') !== String(npm.adminPort) ||
+        !isWebServComposeContainer(found);
       if (mismatch) {
         if (info.State?.Running) await docker.getContainer(found.Id).stop().catch(() => {});
         await docker.getContainer(found.Id).remove({ force: true });
@@ -111,36 +111,20 @@ export async function bootstrapNpm(): Promise<ProxyStatus> {
   }
 
   if (!found) {
-    if (!(await imageExists(npm.image))) {
-      await pullImage(npm.image);
-    }
-
     const dataDir = join(app.getPath('userData'), 'npm', 'data');
     const letsencryptDir = join(app.getPath('userData'), 'npm', 'letsencrypt');
     mkdirSync(dataDir, { recursive: true });
     mkdirSync(letsencryptDir, { recursive: true });
 
-    const container = await docker.createContainer({
-      name: npm.containerName,
-      Image: npm.image,
-      Labels: { 'com.webserv.managed': 'true' },
-      ExposedPorts: {
-        '80/tcp': {},
-        '443/tcp': {},
-        '81/tcp': {},
-      },
-      HostConfig: {
-        RestartPolicy: { Name: 'unless-stopped' },
-        PortBindings: {
-          '80/tcp': [{ HostPort: String(npm.httpPort) }],
-          '443/tcp': [{ HostPort: String(npm.httpsPort) }],
-          '81/tcp': [{ HostPort: String(npm.adminPort) }],
-        },
-        Binds: [`${dataDir}:/data`, `${letsencryptDir}:/etc/letsencrypt`],
-        NetworkMode: networkName,
-      },
-    });
-    await container.start();
+    await composeUpService('npm', {
+      container_name: npm.containerName,
+      image: npm.image,
+      labels: { 'com.webserv.managed': 'true' },
+      ports: [`${npm.httpPort}:80`, `${npm.httpsPort}:443`, `${npm.adminPort}:81`],
+      volumes: [`${dataDir}:/data`, `${letsencryptDir}:/etc/letsencrypt`],
+      restart: 'unless-stopped',
+      networks: [networkName],
+    }, networkName);
     found = await findNpmContainer();
   } else if (found.State !== 'running') {
     await docker.getContainer(found.Id).start();

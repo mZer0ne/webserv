@@ -45,7 +45,7 @@ export default function SettingsView() {
 
       <h4 style={{ margin: '0 0 16px' }}>General</h4>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-        {field('Docker Socket Path (blank = auto)', s.dockerSocketPath, (v) => setS({ ...s, dockerSocketPath: v }), '/var/run/docker.sock')}
+        {field('Docker Host / Socket (blank = auto)', s.dockerSocketPath, (v) => setS({ ...s, dockerSocketPath: v }), 'tcp://127.0.0.1:2375 or //./pipe/docker_engine')}
         {field('Local TLD Suffix', s.tldSuffix, (v) => setS({ ...s, tldSuffix: v }))}
         {field('Docker Network', s.networkName, (v) => setS({ ...s, networkName: v }))}
         {field('Sites Root', s.sitesRoot, (v) => setS({ ...s, sitesRoot: v }))}

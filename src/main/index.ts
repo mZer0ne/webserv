@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu } from 'electron';
 import { join } from 'path';
 import { getDocker, resetDocker } from './docker.js';
 import { getSettings, setSettings } from './settings.js';
@@ -30,6 +30,7 @@ import { listSites, addSite, removeSite, getWebStatus, ensureWeb } from './sites
 import { getAiStatus, bootstrapAi, listModels, pullModel, deleteModel, generate } from './ai.js';
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 function gbFromBytes(bytes?: number): string {
@@ -167,14 +168,55 @@ function createWindow() {
   });
 }
 
+function createTray() {
+  const iconPath = join(__dirname, '../../build/icon.png'); // Adjust path as needed
+  tray = new Tray(iconPath);
+
+  tray.setToolTip('WebServ');
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Show App',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+        } else {
+          createWindow();
+        }
+      },
+    },
+    {
+      label: 'Quit',
+      click: () => {
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  tray.on('click', () => {
+    if (mainWindow) {
+      mainWindow.show();
+    } else {
+      createWindow();
+    }
+  });
+}
+
 app.whenReady().then(() => {
   registerHandlers();
   createWindow();
+  createTray(); // Call createTray here
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // On macOS, it's common for applications and their menu bar to stay active until the user quits
+  // explicitly with Cmd + Q
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });

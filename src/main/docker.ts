@@ -1,4 +1,5 @@
 import Docker from 'dockerode';
+import type { DockerOptions } from 'dockerode';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -6,23 +7,63 @@ import { getSettings } from './settings.js';
 
 let dockerInstance: Docker | null = null;
 
+function dockerOptionsFromHost(value: string): DockerOptions | null {
+  const configured = value.trim();
+  if (!configured) return null;
+
+  if (/^npipe:\/\//i.test(configured)) {
+    return { socketPath: '//./pipe/docker_engine' };
+  }
+
+  if (/^(tcp|http|https):\/\//i.test(configured)) {
+    const normalized = configured.replace(/^tcp:\/\//i, 'http://');
+    const url = new URL(normalized);
+    return {
+      protocol: url.protocol.replace(':', '') as 'http' | 'https',
+      host: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 2375),
+    };
+  }
+
+  const normalizedPipe = configured.replace(/\\/g, '/');
+  if (process.platform === 'win32' && /^\/\/\.\/pipe\/docker_engine/i.test(normalizedPipe)) {
+    return { socketPath: normalizedPipe };
+  }
+
+  if (existsSync(configured)) {
+    return { socketPath: configured };
+  }
+
+  return null;
+}
+
+function autoDockerOptions(): DockerOptions {
+  const defaultPath = '/var/run/docker.sock';
+  const userPath = join(homedir(), '.docker/run/docker.sock');
+
+  if (process.platform === 'win32') {
+    // Docker Desktop with the WSL2 backend exposes the engine through this pipe.
+    return { socketPath: '//./pipe/docker_engine' };
+  }
+
+  if (process.platform === 'darwin' && !existsSync(defaultPath) && existsSync(userPath)) {
+    return { socketPath: userPath };
+  }
+
+  return {};
+}
+
 export function getDocker(): Docker {
   if (dockerInstance) return dockerInstance;
 
   const configured = getSettings().dockerSocketPath;
-  if (configured && existsSync(configured)) {
-    dockerInstance = new Docker({ socketPath: configured });
+  const configuredOptions = dockerOptionsFromHost(configured);
+  if (configuredOptions) {
+    dockerInstance = new Docker(configuredOptions);
     return dockerInstance;
   }
 
-  const defaultPath = '/var/run/docker.sock';
-  const userPath = join(homedir(), '.docker/run/docker.sock');
-
-  if (process.platform === 'darwin' && !existsSync(defaultPath) && existsSync(userPath)) {
-    dockerInstance = new Docker({ socketPath: userPath });
-  } else {
-    dockerInstance = new Docker();
-  }
+  dockerInstance = new Docker(autoDockerOptions());
   return dockerInstance;
 }
 

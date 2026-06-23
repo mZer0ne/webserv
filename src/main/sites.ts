@@ -6,9 +6,8 @@ import {
   getDocker,
   ensureNetwork,
   connectToNetwork,
-  imageExists,
-  pullImage,
 } from './docker.js';
+import { composeUpService, isWebServComposeContainer } from './compose.js';
 import { getSettings } from './settings.js';
 import { syncHosts } from './hosts.js';
 
@@ -83,6 +82,12 @@ async function findContainer(name: string) {
   return containers.find((c) => (c.Names || []).some((n) => n.replace(/^\//, '') === name));
 }
 
+async function removeContainer(id: string, running?: boolean): Promise<void> {
+  const container = getDocker().getContainer(id);
+  if (running) await container.stop().catch(() => {});
+  await container.remove({ force: true });
+}
+
 export async function ensureWeb(): Promise<void> {
   const docker = getDocker();
   const { web, networkName, sitesRoot } = getSettings();
@@ -96,9 +101,8 @@ export async function ensureWeb(): Promise<void> {
     try {
       const info = await docker.getContainer(found.Id).inspect();
       const hp = info.HostConfig?.PortBindings?.['80/tcp']?.[0]?.HostPort;
-      if (hp !== String(web.httpPort)) {
-        if (info.State?.Running) await docker.getContainer(found.Id).stop().catch(() => {});
-        await docker.getContainer(found.Id).remove({ force: true });
+      if (hp !== String(web.httpPort) || !isWebServComposeContainer(found)) {
+        await removeContainer(found.Id, info.State?.Running);
         found = undefined;
       }
     } catch {
@@ -107,20 +111,15 @@ export async function ensureWeb(): Promise<void> {
   }
 
   if (!found) {
-    if (!(await imageExists(web.image))) await pullImage(web.image);
-    const container = await docker.createContainer({
-      name: web.containerName,
-      Image: web.image,
-      Labels: { 'com.webserv.managed': 'true', 'com.webserv.role': 'web' },
-      ExposedPorts: { '80/tcp': {} },
-      HostConfig: {
-        RestartPolicy: { Name: 'unless-stopped' },
-        PortBindings: { '80/tcp': [{ HostPort: String(web.httpPort) }] },
-        Binds: [`${sitesRoot}:${CONTAINER_MOUNT}:ro`, `${dir}:/etc/nginx/conf.d:ro`],
-        NetworkMode: networkName,
-      },
-    });
-    await container.start();
+    await composeUpService('web', {
+      container_name: web.containerName,
+      image: web.image,
+      labels: { 'com.webserv.managed': 'true', 'com.webserv.role': 'web' },
+      ports: [`${web.httpPort}:80`],
+      volumes: [`${sitesRoot}:${CONTAINER_MOUNT}:ro`, `${dir}:/etc/nginx/conf.d:ro`],
+      restart: 'unless-stopped',
+      networks: [networkName],
+    }, networkName);
     found = await findContainer(web.containerName);
   } else if (found.State !== 'running') {
     await docker.getContainer(found.Id).start();
@@ -155,31 +154,26 @@ async function ensurePhp(version: string): Promise<void> {
     // Verify it mounts the sites root; recreate if not.
     const info = await docker.getContainer(found.Id).inspect();
     const hasMount = (info.Mounts || []).some((m) => m.Destination === CONTAINER_MOUNT);
-    if (hasMount) {
+    if (hasMount && isWebServComposeContainer(found)) {
       if (found.State !== 'running') await docker.getContainer(found.Id).start();
       return;
     }
-    if (info.State?.Running) await docker.getContainer(found.Id).stop().catch(() => {});
-    await docker.getContainer(found.Id).remove({ force: true });
+    await removeContainer(found.Id, info.State?.Running);
   }
 
   const image = `php:${version}-fpm`;
-  if (!(await imageExists(image))) await pullImage(image);
-  const container = await docker.createContainer({
-    name,
-    Image: image,
-    Labels: {
+  await composeUpService(`php-${version.replace(/[^a-zA-Z0-9_-]/g, '-')}`, {
+    container_name: name,
+    image,
+    labels: {
       'com.webserv.managed': 'true',
       'com.webserv.runtime': `php-${version}`,
       'com.webserv.category': 'PHP',
     },
-    HostConfig: {
-      RestartPolicy: { Name: 'unless-stopped' },
-      NetworkMode: networkName,
-      Binds: [`${sitesRoot}:${CONTAINER_MOUNT}`],
-    },
-  });
-  await container.start();
+    restart: 'unless-stopped',
+    volumes: [`${sitesRoot}:${CONTAINER_MOUNT}`],
+    networks: [networkName],
+  }, networkName);
 }
 
 // ---------------------------------------------------------------------------

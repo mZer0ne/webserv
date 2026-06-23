@@ -6,9 +6,8 @@ import {
   getDocker,
   ensureNetwork,
   connectToNetwork,
-  imageExists,
-  pullImage,
 } from './docker.js';
+import { composeUpService, isWebServComposeContainer } from './compose.js';
 import { getSettings } from './settings.js';
 
 export interface AiStatus {
@@ -76,7 +75,7 @@ export async function bootstrapAi(): Promise<AiStatus> {
     try {
       const info = await docker.getContainer(found.Id).inspect();
       const hp = info.HostConfig?.PortBindings?.['11434/tcp']?.[0]?.HostPort;
-      if (hp !== String(ai.port)) {
+      if (hp !== String(ai.port) || !isWebServComposeContainer(found)) {
         if (info.State?.Running) await docker.getContainer(found.Id).stop().catch(() => {});
         await docker.getContainer(found.Id).remove({ force: true });
         found = undefined;
@@ -87,22 +86,17 @@ export async function bootstrapAi(): Promise<AiStatus> {
   }
 
   if (!found) {
-    if (!(await imageExists(ai.image))) await pullImage(ai.image);
     const dataDir = join(app.getPath('userData'), 'ollama');
     mkdirSync(dataDir, { recursive: true });
-    const container = await docker.createContainer({
-      name: ai.containerName,
-      Image: ai.image,
-      Labels: { 'com.webserv.managed': 'true', 'com.webserv.role': 'ai' },
-      ExposedPorts: { '11434/tcp': {} },
-      HostConfig: {
-        RestartPolicy: { Name: 'unless-stopped' },
-        PortBindings: { '11434/tcp': [{ HostPort: String(ai.port) }] },
-        Binds: [`${dataDir}:/root/.ollama`],
-        NetworkMode: networkName,
-      },
-    });
-    await container.start();
+    await composeUpService('ollama', {
+      container_name: ai.containerName,
+      image: ai.image,
+      labels: { 'com.webserv.managed': 'true', 'com.webserv.role': 'ai' },
+      ports: [`${ai.port}:11434`],
+      volumes: [`${dataDir}:/root/.ollama`],
+      restart: 'unless-stopped',
+      networks: [networkName],
+    }, networkName);
     found = await findContainer();
   } else if (found.State !== 'running') {
     await docker.getContainer(found.Id).start();
