@@ -1,20 +1,14 @@
 import { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu } from 'electron';
 import { join } from 'path';
-import { getDocker, resetDocker } from './docker.js';
+import { getDocker, resetDocker, stopManagedContainers } from './docker.js';
+import { recordRunningManaged, restoreManaged } from './lifecycle.js';
 import { getSettings, setSettings } from './settings.js';
-import {
-  getProjectsList,
-  startProject,
-  stopProject,
-  getProjectLogs,
-} from './projects.js';
 import {
   listDatabaseContainers,
   listDatabases,
   listTables,
   runQuery,
 } from './database.js';
-import { TEMPLATES, createProject, deleteProject } from './scaffold.js';
 import { getSystemMetrics } from './system.js';
 import { listServices, controlService, serviceLogs } from './services.js';
 import { listRuntimes, installRuntime, uninstallRuntime, listDbFamilies, installFamily, saveServiceConfig, readPhpIni, writePhpIni } from './runtimes.js';
@@ -51,15 +45,6 @@ function registerHandlers() {
   // --- Docker ---
   ipcMain.handle('docker:check-status', dockerStatus);
   ipcMain.handle('docker:get-stats', dockerStatus);
-
-  // --- Projects ---
-  ipcMain.handle('projects:list', () => getProjectsList());
-  ipcMain.handle('projects:start', (_e, id: string) => startProject(id));
-  ipcMain.handle('projects:stop', (_e, id: string) => stopProject(id));
-  ipcMain.handle('projects:get-logs', (_e, id: string, svc?: string) => getProjectLogs(id, svc));
-  ipcMain.handle('projects:templates', () => TEMPLATES);
-  ipcMain.handle('projects:create', (_e, data: any) => createProject(data));
-  ipcMain.handle('projects:delete', (_e, id: string, vols: boolean) => deleteProject(id, vols));
 
   // --- Databases ---
   ipcMain.handle('db:list-containers', () => listDatabaseContainers());
@@ -166,7 +151,7 @@ function createWindow() {
 }
 
 function createTray() {
-  const iconPath = join(__dirname, '../../build/icon.png'); // Adjust path as needed
+  const iconPath = join(__dirname, '../../build/icon.png');
   tray = new Tray(iconPath);
 
   tray.setToolTip('WebServ');
@@ -202,9 +187,17 @@ function createTray() {
 }
 
 app.whenReady().then(() => {
+  // Show the app icon on the dock during development (packaged builds use the .icns).
+  if (process.platform === 'darwin' && app.dock) {
+    try { app.dock.setIcon(join(__dirname, '../../build/icon.png')); } catch { /* ignore */ }
+  }
   registerHandlers();
   createWindow();
-  createTray(); // Call createTray here
+  // createTray(); // Call createTray here
+  // Auto-start the managed containers that were running at last quit.
+  if (getSettings().autoStart) {
+    restoreManaged().catch((err) => console.error('Autostart failed:', err));
+  }
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -216,4 +209,20 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+// On quit, stop all WebServ-managed containers (web server, PHP/DB runtimes, etc.).
+let isQuitting = false;
+app.on('before-quit', (e) => {
+  if (isQuitting || !getSettings().stopOnQuit) return;
+  e.preventDefault();
+  isQuitting = true;
+  // Remember what's running (for autostart next launch), then stop it.
+  // Don't let a hung Docker call block the quit forever.
+  const guard = new Promise<void>((resolve) => setTimeout(resolve, 15_000));
+  const work = (async () => {
+    await recordRunningManaged().catch(() => {});
+    await stopManagedContainers().catch(() => {});
+  })();
+  Promise.race([work, guard]).finally(() => app.quit());
 });

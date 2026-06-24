@@ -1,22 +1,3 @@
-export interface ContainerInfo {
-  id: string;
-  name: string;
-  image: string;
-  state: string;
-  status: string;
-  ports: any[];
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  stack: string;
-  domain: string;
-  status: 'running' | 'stopped' | 'starting';
-  services: string[];
-  containers: ContainerInfo[];
-}
-
 export interface DockerStatus {
   active: boolean;
   version?: string;
@@ -25,13 +6,6 @@ export interface DockerStatus {
   images?: number;
   memory?: string;
   error?: string;
-}
-
-export interface Template {
-  id: string;
-  label: string;
-  description: string;
-  stack: string;
 }
 
 export interface DbContainer {
@@ -54,8 +28,9 @@ export interface QueryResult {
 export interface AppSettings {
   dockerSocketPath: string;
   networkName: string;
-  workspaceDir: string;
   sitesRoot: string;
+  stopOnQuit: boolean;
+  autoStart: boolean;
   web: {
     containerName: string;
     image: string;
@@ -74,7 +49,7 @@ export interface AppSettings {
 export interface SystemMetrics {
   cpu: { usage: number; system: number; user: number; nice: number; idle: number; history: number[] };
   memory: { usedGB: number; totalGB: number; pressure: number; app: number; wired: number; compressed: number };
-  storage: { usedTB: number; totalTB: number; percent: number };
+  storage: { usedBytes: number; totalBytes: number; percent: number };
   network: { ip: string; uploadKbps: number; downloadKbps: number };
 }
 
@@ -90,6 +65,7 @@ export interface ServiceInfo {
   project: string | null;
   managed: boolean;
   internalPorts: number[];
+  health?: string;
 }
 
 export interface RuntimeStatus {
@@ -177,15 +153,6 @@ export interface AiModel {
 }
 
 export interface Api {
-  projects: {
-    list: () => Promise<Project[]>;
-    templates: () => Promise<Template[]>;
-    create: (data: { name: string; template: string }) => Promise<{ success: boolean; project?: string; dir?: string; error?: string }>;
-    delete: (id: string, deleteVolumes: boolean) => Promise<{ success: boolean; error?: string }>;
-    start: (id: string) => Promise<{ success: boolean; error?: string }>;
-    stop: (id: string) => Promise<{ success: boolean; error?: string }>;
-    getLogs: (id: string, serviceName?: string) => Promise<string>;
-  };
   docker: {
     checkStatus: () => Promise<DockerStatus>;
     getStats: () => Promise<DockerStatus>;

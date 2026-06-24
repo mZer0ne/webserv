@@ -1,30 +1,24 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { Project } from './types';
+import { useState, useEffect, useCallback } from 'react';
 import DashboardView from './views/DashboardView';
-import ProjectsView from './views/ProjectsView';
 import RuntimesView from './views/RuntimesView';
 import SitesView from './views/SitesView';
 import AiView from './views/AiView';
-import ContainersView from './views/ContainersView';
 import DatabaseView from './views/DatabaseView';
 import SettingsView from './views/SettingsView';
 
-type Tab = 'dashboard' | 'sites' | 'runtimes' | 'projects' | 'containers' | 'database' | 'ai' | 'settings';
+type Tab = 'dashboard' | 'sites' | 'runtimes' | 'database' | 'ai' | 'settings';
 
 const NAV: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: '📊 Dashboard' },
   { id: 'sites', label: '🌍 Sites' },
   { id: 'runtimes', label: '🧩 Services' },
-  // { id: 'projects', label: '📁 Projects' },
-  // { id: 'containers', label: '📦 Containers' },
-  // { id: 'database', label: '🗄️ Databases' },
+  { id: 'database', label: '🗄️ Databases' },
   { id: 'ai', label: '🤖 AI / LLM' },
   { id: 'settings', label: '⚙️ Settings' },
 ];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const [projects, setProjects] = useState<Project[]>([]);
   const [dockerActive, setDockerActive] = useState(false);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ version: 'Unknown', containers: 0, containersRunning: 0, images: 0, memory: 'N/A' });
@@ -41,9 +35,6 @@ export default function App() {
           images: status.images || 0,
           memory: status.memory || 'N/A',
         });
-        setProjects(await window.api.projects.list());
-      } else {
-        setProjects([]);
       }
     } catch (err) {
       console.error('Error fetching docker data:', err);
@@ -117,8 +108,6 @@ export default function App() {
               {activeTab === 'dashboard' && <DashboardView />}
               {activeTab === 'sites' && <SitesView />}
               {activeTab === 'runtimes' && <RuntimesView />}
-              {activeTab === 'projects' && <ProjectsView onCreated={fetchData} />}
-              {activeTab === 'containers' && <ContainersView projects={projects} />}
               {activeTab === 'database' && <DatabaseView />}
               {activeTab === 'ai' && <AiView />}
               {activeTab === 'settings' && <SettingsView />}

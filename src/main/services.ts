@@ -12,6 +12,7 @@ export interface ServiceInfo {
     project: string | null;
     managed: boolean;
     internalPorts: number[];
+    health?: string;
 }
 
 const CATEGORY_RULES: { test: RegExp; category: string }[] = [
@@ -144,10 +145,12 @@ export async function listServices(): Promise<ServiceInfo[]> {
         const running = c.State === 'running';
         let pid = 0;
         let env: string[] | undefined;
+        let health: string | undefined;
         try {
             const info = await docker.getContainer(c.Id).inspect();
             pid = info.State?.Pid || 0;
             env = info.Config?.Env || undefined;
+            health = info.State?.Health?.Status; // 'starting' | 'healthy' | 'unhealthy' (undefined = no healthcheck)
         } catch {
             /* ignore inspect failure */
         }
@@ -164,6 +167,7 @@ export async function listServices(): Promise<ServiceInfo[]> {
             project: c.Labels?.['com.docker.compose.project'] || null,
             managed: c.Labels?.['com.webserv.managed'] === 'true',
             internalPorts: [...new Set((c.Ports || []).map((p) => p.PrivatePort).filter(Boolean))],
+            health,
         });
     }
     return out;

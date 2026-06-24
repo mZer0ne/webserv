@@ -1,4 +1,5 @@
 import os from 'os';
+import { existsSync } from 'fs';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -7,7 +8,7 @@ const execAsync = promisify(exec);
 export interface SystemMetrics {
   cpu: { usage: number; system: number; user: number; nice: number; idle: number; history: number[] };
   memory: { usedGB: number; totalGB: number; pressure: number; app: number; wired: number; compressed: number };
-  storage: { usedTB: number; totalTB: number; percent: number };
+  storage: { usedBytes: number; totalBytes: number; percent: number };
   network: { ip: string; uploadKbps: number; downloadKbps: number };
 }
 
@@ -31,17 +32,23 @@ function pct(part: number, whole: number): number {
   return whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 }
 
-async function readStorage(): Promise<{ usedTB: number; totalTB: number; percent: number }> {
+async function readStorage(): Promise<{ usedBytes: number; totalBytes: number; percent: number }> {
+  // On macOS APFS, `/` is the read-only system volume (shows almost no usage);
+  // real free/used space lives on the Data volume. Query it and derive
+  // used = total − available so the numbers match Finder.
+  const target = process.platform === 'darwin' && existsSync('/System/Volumes/Data')
+    ? '/System/Volumes/Data'
+    : '/';
   try {
-    const { stdout } = await execAsync('df -k /');
+    const { stdout } = await execAsync(`df -k "${target}"`);
     const line = stdout.trim().split('\n').pop() || '';
     const cols = line.split(/\s+/);
-    const totalKb = parseInt(cols[1], 10);
-    const usedKb = parseInt(cols[2], 10);
-    const toTB = (kb: number) => Math.round((kb / 1024 / 1024 / 1024) * 100) / 100;
-    return { usedTB: toTB(usedKb), totalTB: toTB(totalKb), percent: pct(usedKb, totalKb) };
+    const totalKb = parseInt(cols[1], 10);   // 1024-blocks (container size)
+    const availKb = parseInt(cols[3], 10);   // available
+    const usedKb = Math.max(0, totalKb - availKb);
+    return { usedBytes: usedKb * 1024, totalBytes: totalKb * 1024, percent: pct(usedKb, totalKb) };
   } catch {
-    return { usedTB: 0, totalTB: 0, percent: 0 };
+    return { usedBytes: 0, totalBytes: 0, percent: 0 };
   }
 }
 

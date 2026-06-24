@@ -5,7 +5,6 @@ yarn.lock
 
 # Electron / React build
 /dist
-/build
 /out
 /release
 

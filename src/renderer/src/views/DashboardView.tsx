@@ -1,6 +1,57 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import type { ServiceInfo, SystemMetrics } from '../types';
 
+const STATE_META: Record<string, { label: string; color: string }> = {
+  running: { label: 'Running', color: 'var(--color-success)' },
+  restarting: { label: 'Restarting', color: 'var(--color-warning)' },
+  paused: { label: 'Paused', color: '#5b8cff' },
+  created: { label: 'Created', color: 'var(--text-muted)' },
+  exited: { label: 'Stopped', color: 'var(--text-muted)' },
+  dead: { label: 'Dead', color: 'var(--color-danger)' },
+};
+
+function stateMeta(state: string) {
+  return STATE_META[state] || { label: state || 'Unknown', color: 'var(--text-muted)' };
+}
+
+const HEALTH_META: Record<string, { label: string; color: string; glyph: string }> = {
+  healthy: { label: 'healthy', color: 'var(--color-success)', glyph: '✓' },
+  unhealthy: { label: 'unhealthy', color: 'var(--color-danger)', glyph: '✗' },
+  starting: { label: 'starting', color: 'var(--color-warning)', glyph: '…' },
+};
+
+function statusCell(s: ServiceInfo) {
+  const m = stateMeta(s.state);
+  const running = s.state === 'running';
+  const h = s.health ? HEALTH_META[s.health] : undefined;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <span style={{
+        width: 9, height: 9, borderRadius: '50%', flexShrink: 0, background: m.color,
+        boxShadow: running ? `0 0 6px ${m.color}` : 'none',
+      }} />
+      <span style={{ fontWeight: 600, color: m.color, fontSize: '0.85rem' }}>{m.label}</span>
+      {h && (
+        <span style={{
+          fontSize: '0.7rem', fontWeight: 600, color: h.color, padding: '1px 6px',
+          borderRadius: 4, border: `1px solid ${h.color}`, background: 'transparent',
+        }}>
+          {h.glyph} {h.label}
+        </span>
+      )}
+      {s.status && <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>· {s.status}</span>}
+    </div>
+  );
+}
+
+function fmtBytes(b: number): string {
+  if (b >= 1024 ** 4) return `${(b / 1024 ** 4).toFixed(2)} TB`;
+  if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(1)} GB`;
+  if (b >= 1024 ** 2) return `${(b / 1024 ** 2).toFixed(0)} MB`;
+  if (b >= 1024) return `${(b / 1024).toFixed(0)} KB`;
+  return `${b} B`;
+}
+
 const CATEGORY_ORDER = [
   'Web Server', 'PHP', 'MariaDB', 'MySQL', 'PostgreSQL',
   'Redis', 'Memcached', 'MongoDB', 'Node.js', 'WordPress', 'Other',
@@ -77,21 +128,22 @@ export default function DashboardView() {
 
   const renderRow = (s: ServiceInfo, project: string | null) => {
     const running = s.state === 'running';
+    const stripe = s.health === 'unhealthy' ? 'var(--color-danger)' : stateMeta(s.state).color;
     const display = project && s.name.startsWith(`${project}-`) ? s.name.slice(project.length + 1) : s.name;
     return (
       <tr key={s.id}>
-        <td style={{ ...td, paddingLeft: project ? 46 : 20 }}>{display}</td>
+        <td style={{ ...td, paddingLeft: project ? 46 : 20, borderLeft: `3px solid ${running ? stripe : 'transparent'}` }}>{display}</td>
         <td style={{ ...td, fontFamily: 'var(--font-mono)', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>{s.version}</td>
-        <td style={td}><span className={`run-badge ${running ? 'run' : 'stopped'}`}>{running ? 'Running' : 'Stopped'}</span></td>
+        <td style={td}>{statusCell(s)}</td>
         <td style={{ ...td, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{s.pid || '—'}</td>
         <td style={td}>
           {running ? (
-            <button className="ctrl-btn" title="Stop" onClick={() => control(s.id, 'stop')}>🔴</button>
+            <button className="btn-action stop" title="Stop" onClick={() => control(s.id, 'stop')}>■</button>
           ) : (
-            <button className="ctrl-btn" title="Start" onClick={() => control(s.id, 'start')}>🟢</button>
+            <button className="btn-action start" title="Start" onClick={() => control(s.id, 'start')}>▶</button>
           )}
-          <button className="ctrl-btn" title="Restart" onClick={() => control(s.id, 'restart')}>🔄</button>
-          <button className="ctrl-btn" title="Logs" onClick={() => showLogs(s)}>📄</button>
+          <button className="btn-action" title="Restart" disabled={!running} onClick={() => control(s.id, 'restart')}>↻</button>
+          <button className="btn-action" title="Logs" onClick={() => showLogs(s)}>▤</button>
         </td>
       </tr>
     );
@@ -138,15 +190,26 @@ export default function DashboardView() {
                           <span style={{ color: 'var(--text-muted)', fontWeight: 400, marginLeft: 8, fontSize: '0.8rem' }}>({members.length})</span>
                         </td>
                         <td style={td} />
-                        <td style={td}><span className={`run-badge ${anyRunning ? 'run' : 'stopped'}`}>{anyRunning ? 'Running' : 'Stopped'}</span></td>
+                        <td style={td}>
+                          {(() => {
+                            const up = members.filter((m) => m.state === 'running').length;
+                            const color = up === 0 ? 'var(--text-muted)' : up === members.length ? 'var(--color-success)' : 'var(--color-warning)';
+                            return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <span style={{ width: 9, height: 9, borderRadius: '50%', background: color, boxShadow: up ? `0 0 6px ${color}` : 'none' }} />
+                                <span style={{ fontWeight: 600, color, fontSize: '0.85rem' }}>{up}/{members.length} up</span>
+                              </div>
+                            );
+                          })()}
+                        </td>
                         <td style={td} />
                         <td style={td} onClick={(e) => e.stopPropagation()}>
                           {anyRunning ? (
-                            <button className="ctrl-btn" title="Stop all" onClick={() => groupControl(members, 'stop')}>🔴</button>
+                            <button className="btn-action stop" title="Stop all" onClick={() => groupControl(members, 'stop')}>■</button>
                           ) : (
-                            <button className="ctrl-btn" title="Start all" onClick={() => groupControl(members, 'start')}>🟢</button>
+                            <button className="btn-action start" title="Start all" onClick={() => groupControl(members, 'start')}>▶</button>
                           )}
-                          <button className="ctrl-btn" title="Restart all" onClick={() => groupControl(members, 'restart')}>🔄</button>
+                          <button className="btn-action" title="Restart all" onClick={() => groupControl(members, 'restart')}>↻</button>
                         </td>
                       </tr>
                       {!isCollapsed && members.map((s) => renderRow(s, project))}
@@ -193,7 +256,7 @@ export default function DashboardView() {
         <div className="metric-panel">
           <h4>Storage</h4>
           <div className="metric-bar"><span style={{ width: `${metrics?.storage.percent ?? 0}%` }} /></div>
-          <div className="metric-row"><span>{metrics?.storage.percent ?? 0} %</span><span>{metrics?.storage.usedTB ?? 0}/{metrics?.storage.totalTB ?? 0} TB</span></div>
+          <div className="metric-row"><span>{metrics?.storage.percent ?? 0} %</span><span>{fmtBytes(metrics?.storage.usedBytes ?? 0)} / {fmtBytes(metrics?.storage.totalBytes ?? 0)}</span></div>
         </div>
 
         <div className="metric-panel">

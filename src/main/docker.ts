@@ -71,6 +71,17 @@ export function resetDocker(): void {
   dockerInstance = null;
 }
 
+/** Stop all running containers managed by WebServ (label com.webserv.managed=true). */
+export async function stopManagedContainers(): Promise<void> {
+  const docker = getDocker();
+  const containers = await docker.listContainers({
+    filters: { label: ['com.webserv.managed=true'], status: ['running'] },
+  });
+  await Promise.all(
+    containers.map((c) => docker.getContainer(c.Id).stop({ t: 5 }).catch(() => {}))
+  );
+}
+
 /** Ensure a user-defined bridge network exists; returns its id. */
 export async function ensureNetwork(name: string): Promise<string> {
   const docker = getDocker();

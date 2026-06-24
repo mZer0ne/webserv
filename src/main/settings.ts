@@ -22,8 +22,9 @@ export interface AiSettings {
 export interface AppSettings {
   dockerSocketPath: string;
   networkName: string;
-  workspaceDir: string;
   sitesRoot: string;
+  stopOnQuit: boolean;
+  autoStart: boolean;
   web: WebSettings;
   ai: AiSettings;
 }
@@ -31,8 +32,9 @@ export interface AppSettings {
 const defaults: AppSettings = {
   dockerSocketPath: '',
   networkName: 'webserv-network',
-  workspaceDir: join(homedir(), 'WebServProjects'),
   sitesRoot: join(homedir(), 'Sites'),
+  stopOnQuit: true,
+  autoStart: true,
   web: {
     containerName: 'webserv-web',
     image: 'nginx:alpine',

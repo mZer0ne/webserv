@@ -2,17 +2,6 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 // Expose a safe, restricted API window interface to the React renderer
 contextBridge.exposeInMainWorld('api', {
-  projects: {
-    list: () => ipcRenderer.invoke('projects:list'),
-    templates: () => ipcRenderer.invoke('projects:templates'),
-    create: (data: any) => ipcRenderer.invoke('projects:create', data),
-    delete: (id: string, deleteVolumes: boolean) =>
-      ipcRenderer.invoke('projects:delete', id, deleteVolumes),
-    start: (id: string) => ipcRenderer.invoke('projects:start', id),
-    stop: (id: string) => ipcRenderer.invoke('projects:stop', id),
-    getLogs: (id: string, serviceName?: string) =>
-      ipcRenderer.invoke('projects:get-logs', id, serviceName),
-  },
   docker: {
     checkStatus: () => ipcRenderer.invoke('docker:check-status'),
     getStats: () => ipcRenderer.invoke('docker:get-stats'),

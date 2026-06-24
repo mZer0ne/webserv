@@ -27,6 +27,29 @@
   
   --font-sans: 'Outfit', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+
+  /* Subtle overlay tints (flip per theme so inline white-tints aren't needed) */
+  --overlay-soft: rgba(255, 255, 255, 0.03);
+  --overlay-softer: rgba(255, 255, 255, 0.02);
+  --card-gradient: linear-gradient(160deg, rgba(30, 41, 70, 0.6), rgba(17, 19, 24, 0.6));
+}
+
+:root[data-theme='light'] {
+  --bg-primary: #f4f5f7;
+  --bg-secondary: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.85);
+  --border-color: rgba(0, 0, 0, 0.10);
+  --border-glow: rgba(99, 102, 241, 0.25);
+
+  --text-primary: #1c2230;
+  --text-secondary: #4b5563;
+  --text-muted: #8b93a1;
+
+  --color-success-glow: rgba(16, 185, 129, 0.18);
+
+  --overlay-soft: rgba(0, 0, 0, 0.04);
+  --overlay-softer: rgba(0, 0, 0, 0.025);
+  --card-gradient: linear-gradient(160deg, #ffffff, #f1f3f7);
 }
 
 * {
@@ -385,7 +408,7 @@ select,
 }
 
 .service-card {
-  background: linear-gradient(160deg, rgba(30, 41, 70, 0.6), rgba(17, 19, 24, 0.6));
+  background: var(--card-gradient);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 14px 16px;
