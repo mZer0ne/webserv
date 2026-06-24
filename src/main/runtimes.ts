@@ -1,6 +1,6 @@
-import { app } from 'electron';
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from 'fs';
-import { join } from 'path';
+import {app} from 'electron';
+import {mkdirSync, existsSync, readFileSync, writeFileSync} from 'fs';
+import {join} from 'path';
 import {getDocker, ensureNetwork} from './docker.js';
 import {composeUpService, isWebServComposeContainer} from './compose.js';
 import {getSettings} from './settings.js';
@@ -176,7 +176,8 @@ function familyDataMount(familyId: string, version: string): string[] | undefine
 
 async function removeStandaloneContainer(existing: { Id: string; State?: string }): Promise<void> {
     const container = getDocker().getContainer(existing.Id);
-    if (existing.State === 'running') await container.stop().catch(() => {});
+    if (existing.State === 'running') await container.stop().catch(() => {
+    });
     await container.remove({force: true});
 }
 
@@ -226,7 +227,8 @@ export async function installFamily(familyId: string, version: string): Promise<
                 if (existing.State !== 'running') await docker.getContainer(existing.Id).start();
                 return {success: true};
             }
-            if (info.State?.Running) await docker.getContainer(existing.Id).stop().catch(() => {});
+            if (info.State?.Running) await docker.getContainer(existing.Id).stop().catch(() => {
+            });
             await docker.getContainer(existing.Id).remove({force: true});
         }
         const image = f.image(version);
@@ -252,7 +254,10 @@ export async function installFamily(familyId: string, version: string): Promise<
 }
 
 /** Persist per-version settings and recreate the container if it already exists. */
-export async function saveServiceConfig(key: string, cfg: ServiceConfig): Promise<{ success: boolean; error?: string }> {
+export async function saveServiceConfig(key: string, cfg: ServiceConfig): Promise<{
+    success: boolean;
+    error?: string
+}> {
     setServiceConfig(key, cfg);
     const docker = getDocker();
 
